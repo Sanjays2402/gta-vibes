@@ -17,6 +17,10 @@
   #hud b { color: #ffd166; }
   #speedo { position: fixed; bottom: 12px; right: 12px; padding: 10px 18px; background: rgba(0,0,0,.6); border-radius: 12px; font-size: 18px; font-weight: 700; }
   #speedo small { font-size: 11px; color: #aaa; font-weight: 400; margin-left: 4px; }
+  #nitro { position: fixed; bottom: 64px; right: 12px; width: 160px; padding: 6px 10px; background: rgba(0,0,0,.6); border-radius: 8px; font-size: 11px; color: #aaa; }
+  #nitro .bar { height: 8px; background: #222; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  #nitro .fill { height: 100%; background: linear-gradient(90deg, #00e5ff, #00ffa6); transition: width .1s linear; }
+  #nitro.active .fill { background: linear-gradient(90deg, #ff5722, #ffd166); }
   #help { position: fixed; bottom: 12px; left: 12px; padding: 8px 12px; background: rgba(0,0,0,.55); border: 1px solid #333; border-radius: 8px; font-size: 12px; color: #aaa; }
   #help kbd { background: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; margin: 0 2px; }
 </style>
@@ -31,8 +35,9 @@
   <div>Best air: <b id="bestair">0.0</b> s</div>
 </div>
 <div id="speedo"><span id="kmh">0</span><small>km/h</small></div>
+<div id="nitro"><span>Nitro</span><div class="bar"><div class="fill" id="nitroFill" style="width:100%"></div></div></div>
 <div id="help">
-  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> handbrake · <kbd>C</kbd> camera · <kbd>T</kbd> time · <kbd>R</kbd> reset
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> handbrake · <kbd>Shift</kbd> nitro · <kbd>C</kbd> camera · <kbd>T</kbd> time · <kbd>R</kbd> reset
 </div>
 
 <script type="importmap">
@@ -255,7 +260,11 @@ const carState = {
   airTime: 0,
   bestAir: +localStorage.getItem('gtaVibesDriftBestAir') || 0,
   topSpeed: 0,
+  nitro: 1,
+  nitroActive: false,
 };
+const nitroEl = document.getElementById('nitro');
+const nitroFill = document.getElementById('nitroFill');
 document.getElementById('bestair').textContent = carState.bestAir.toFixed(1);
 
 const keys = {};
@@ -299,8 +308,14 @@ applyTime();
 
 const clock = new THREE.Clock();
 function update(dt) {
-  const accel = 55, brake = 65, friction = 0.96;
-  const maxFwd = 110;
+  const wantNitro = (keys['shift'] || keys['arrowshift']) && carState.nitro > 0.02;
+  carState.nitroActive = wantNitro;
+  if (wantNitro) carState.nitro = Math.max(0, carState.nitro - dt * 0.35);
+  else carState.nitro = Math.min(1, carState.nitro + dt * 0.18);
+  const boost = wantNitro ? 1.55 : 1;
+
+  const accel = 55 * boost, brake = 65, friction = 0.96;
+  const maxFwd = wantNitro ? 165 : 110;
   const turnRate = 1.8;
 
   const fwd = new THREE.Vector3(Math.sin(carState.yaw), 0, Math.cos(carState.yaw));
@@ -430,6 +445,16 @@ function update(dt) {
     camera.position.set(car.position.x, car.position.y + 60, car.position.z);
     camera.lookAt(car.position.x + Math.sin(carState.yaw) * 0.001, car.position.y, car.position.z + Math.cos(carState.yaw) * 0.001);
   }
+
+  if (carState.nitroActive && spLen > 10) {
+    const cy = Math.cos(carState.yaw), sy = Math.sin(carState.yaw);
+    const bx = car.position.x - sy * 2.2, bz = car.position.z - cy * 2.2;
+    emitSmoke(bx - 0.4, 0.55, bz);
+    emitSmoke(bx + 0.4, 0.55, bz);
+  }
+
+  nitroFill.style.width = (carState.nitro * 100).toFixed(0) + '%';
+  nitroEl.classList.toggle('active', carState.nitroActive);
 
   document.getElementById('kmh').textContent = kmh;
   document.getElementById('dist').textContent = Math.floor(carState.distance);

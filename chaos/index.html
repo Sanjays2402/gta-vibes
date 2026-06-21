@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GTA Vibes — Chaos (2D)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: #111; color: #eee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; background: #2a2a2a; cursor: crosshair; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; padding: 10px 14px;
+    background: rgba(0,0,0,.55); border: 1px solid #333; border-radius: 8px;
+    backdrop-filter: blur(6px); font-size: 13px; line-height: 1.6; min-width: 200px;
+  }
+  #hud b { color: #ffd166; }
+  #stars { font-size: 18px; letter-spacing: 4px; color: #ff5252; }
+  #help {
+    position: fixed; bottom: 12px; left: 12px; padding: 8px 12px;
+    background: rgba(0,0,0,.55); border: 1px solid #333; border-radius: 8px;
+    font-size: 12px; color: #aaa;
+  }
+  #help kbd {
+    background: #333; color: #fff; padding: 2px 6px; border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 11px; margin: 0 2px;
+  }
+  #over {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.75); flex-direction: column; gap: 12px; z-index: 10;
+  }
+  #over.show { display: flex; }
+  #over h1 { font-size: 48px; color: #ff5252; }
+  #over button {
+    padding: 12px 24px; font-size: 16px; background: #ffd166; color: #111;
+    border: 0; border-radius: 8px; cursor: pointer; font-weight: 600;
+  }
+  #over button:hover { background: #ffba00; }
+  .toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    padding: 16px 24px; background: rgba(255,82,82,.95); color: #fff;
+    border-radius: 8px; font-size: 18px; font-weight: 700; opacity: 0;
+    transition: opacity .3s; pointer-events: none; z-index: 5;
+  }
+  .toast.show { opacity: 1; }
+  #minimap {
+    position: fixed; top: 12px; right: 12px; width: 160px; height: 160px;
+    background: rgba(0,0,0,.6); border: 1px solid #444; border-radius: 8px;
+    backdrop-filter: blur(6px);
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="minimap" width="160" height="160"></canvas>
+<div id="hud">
+  <div>Wanted: <span id="stars">·····</span></div>
+  <div>Cops chasing: <b id="copcount">0</b></div>
+  <div>Score: <b id="score">0</b></div>
+  <div>Time: <b id="timer">0:00</b></div>
+  <div>Best: <b id="best">0</b></div>
+</div>
+<div id="help">
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> brake · <kbd>R</kbd> restart · <kbd>H</kbd> hide stars
+</div>
+<div id="over">
+  <h1 id="overTitle">BUSTED</h1>
+  <div id="overSub" style="color:#ccc">Score: <b id="overScore">0</b></div>
+  <button onclick="restart()">Restart (R)</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ============== CANVAS ==============
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+const MM = 160, MM_SCALE = MM / 4000;
+function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+
+// ============== STATE ==============
+const W = 4000, H = 4000;       // world size
+const TILE = 100;                // road grid spacing
+const keys = {};
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
+
+let player, cops, peds, bullets, particles, buildings, score, startTime, gameOver, stars, lastHitTime;
+const best = +localStorage.getItem('gtaVibesChaosBest') || 0;
+document.getElementById('best').textContent = best;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + dy*dy; }
+
+// ============== WORLD GEN ==============
+function genBuildings() {
+  const b = [];
+  for (let i = 0; i < 280; i++) {
+    const x = rand(0, W), y = rand(0, H);
+    // skip near road grid
+    if (Math.abs(x % TILE) < 30 || Math.abs(y % TILE) < 30) continue;
+    b.push({
+      x, y,
+      w: rand(40, 160), h: rand(40, 160),
+      c: `hsl(${rand(0,360)|0}, 15%, ${rand(18,32)|0}%)`
+    });
+  }
+  return b;
+}
+function genPeds(n) {
+  const p = [];
+  for (let i = 0; i < n; i++) {
+    p.push({
+      x: rand(0, W), y: rand(0, H),
+      vx: rand(-.3, .3), vy: rand(-.3, .3),
+      c: `hsl(${rand(0,360)|0}, 60%, 60%)`,
+      alive: true
+    });
+  }
+  return p;
+}
+
+// ============== INIT ==============
+function init() {
+  player = { x: W/2, y: H/2, vx: 0, vy: 0, angle: -Math.PI/2, hp: 100, w: 24, h: 14 };
+  cops = []; bullets = []; particles = []; peds = genPeds(120);
+  buildings = genBuildings();
+  score = 0; stars = 0; gameOver = false; lastHitTime = 0;
+  startTime = performance.now();
+}
+init();
+
+// ============== PLAYER UPDATE ==============
+function updatePlayer(dt) {
+  const accel = 0.35, friction = 0.96, turn = 0.055, maxSpeed = 8;
+  if (keys['w'] || keys['arrowup']) {
+    player.vx += Math.cos(player.angle) * accel;
+    player.vy += Math.sin(player.angle) * accel;
+  }
+  if (keys['s'] || keys['arrowdown']) {
+    player.vx -= Math.cos(player.angle) * accel * 0.6;
+    player.vy -= Math.sin(player.angle) * accel * 0.6;
+  }
+  const speed = Math.hypot(player.vx, player.vy);
+  if (speed > maxSpeed) {
+    player.vx = player.vx / speed * maxSpeed;
+    player.vy = player.vy / speed * maxSpeed;
+  }
+  // turning requires some movement (feel)
+  const turnMod = Math.min(1, speed / 2);
+  if (keys['a'] || keys['arrowleft'])  player.angle -= turn * turnMod;
+  if (keys['d'] || keys['arrowright']) player.angle += turn * turnMod;
+  // brake
+  if (keys[' ']) { player.vx *= 0.85; player.vy *= 0.85; }
+  player.vx *= friction; player.vy *= friction;
+  player.x += player.vx; player.y += player.vy;
+  // world wrap (soft)
+  player.x = Math.max(20, Math.min(W - 20, player.x));
+  player.y = Math.max(20, Math.min(H - 20, player.y));
+
+  // building collision (simple AABB)
+  for (const b of buildings) {
+    if (player.x > b.x && player.x < b.x + b.w && player.y > b.y && player.y < b.y + b.h) {
+      // bounce
+      const cx = b.x + b.w/2, cy = b.y + b.h/2;
+      const nx = player.x - cx, ny = player.y - cy;
+      if (Math.abs(nx) > Math.abs(ny)) {
+        player.x = nx > 0 ? b.x + b.w + 1 : b.x - 1;
+        player.vx *= -0.4;
+      } else {
+        player.y = ny > 0 ? b.y + b.h + 1 : b.y - 1;
+        player.vy *= -0.4;
+      }
+      spawnParticles(player.x, player.y, '#ffd166', 6);
+      // small damage on building hit if going fast
+      if (speed > 5) damagePlayer(2);
+    }
+  }
+}
+
+// ============== PEDS / SCORE ==============
+function updatePeds() {
+  for (const p of peds) {
+    if (!p.alive) continue;
+    p.x += p.vx; p.y += p.vy;
+    if (Math.random() < 0.01) { p.vx = rand(-.3,.3); p.vy = rand(-.3,.3); }
+    p.x = (p.x + W) % W; p.y = (p.y + H) % H;
+    // hit by player
+    if (dist2(p, player) < 280) {
+      const sp = Math.hypot(player.vx, player.vy);
+      if (sp > 1.5) {
+        p.alive = false;
+        score += Math.floor(50 + sp * 10);
+        spawnParticles(p.x, p.y, '#ff3030', 14);
+        addStars(0.5);
+        toast('+' + (50 + Math.floor(sp*10)));
+      }
+    }
+  }
+}
+
+// ============== COPS ==============
+function spawnCop() {
+  // spawn off-screen edge
+  const side = Math.random() < .5;
+  const edge = Math.random() < .5 ? -50 : (side ? W : H) + 50;
+  const along = rand(0, side ? H : W);
+  cops.push({
+    x: side ? edge : along, y: side ? along : edge,
+    vx: 0, vy: 0, angle: 0, hp: 60, fireCD: rand(60, 120), w: 24, h: 14
+  });
+}
+function updateCops() {
+  for (const c of cops) {
+    const dx = player.x - c.x, dy = player.y - c.y;
+    const a = Math.atan2(dy, dx);
+    c.angle = a;
+    const d = Math.hypot(dx, dy);
+    const speed = 4 + stars * 0.6;
+    if (d > 200) {
+      c.vx = Math.cos(a) * speed;
+      c.vy = Math.sin(a) * speed;
+    } else {
+      // back off, shoot
+      c.vx *= 0.9; c.vy *= 0.9;
+      c.fireCD--;
+      if (c.fireCD <= 0) {
+        c.fireCD = Math.max(20, 80 - stars * 8);
+        bullets.push({
+          x: c.x, y: c.y,
+          vx: Math.cos(a) * 9, vy: Math.sin(a) * 9,
+          fromCop: true, life: 120
+        });
+      }
+    }
+    c.x += c.vx; c.y += c.vy;
+    // ram damage
+    if (d < 28) {
+      damagePlayer(0.4);
+      const knock = 4;
+      player.vx += Math.cos(a) * knock;
+      player.vy += Math.sin(a) * knock;
+      c.vx -= Math.cos(a) * knock; c.vy -= Math.sin(a) * knock;
+    }
+  }
+}
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx; b.y += b.vy; b.life--;
+    if (b.life <= 0) { bullets.splice(i, 1); continue; }
+    if (b.fromCop && dist2(b, player) < 200) {
+      damagePlayer(6);
+      spawnParticles(b.x, b.y, '#ffd166', 5);
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+// ============== STARS / DAMAGE ==============
+function addStars(amount) {
+  stars = Math.min(5, stars + amount);
+  renderStars();
+}
+function renderStars() {
+  const filled = '★'.repeat(Math.floor(stars));
+  const empty = '·'.repeat(5 - Math.floor(stars));
+  document.getElementById('stars').textContent = filled + empty;
+}
+function damagePlayer(amt) {
+  if (gameOver) return;
+  player.hp -= amt;
+  lastHitTime = performance.now();
+  if (player.hp <= 0) end('WASTED');
+}
+
+// ============== PARTICLES ==============
+function spawnParticles(x, y, c, n) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y,
+      vx: rand(-3, 3), vy: rand(-3, 3),
+      life: rand(20, 50), c
+    });
+  }
+}
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ============== TOAST / END ==============
+let toastT;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), 800);
+}
+function end(title) {
+  gameOver = true;
+  document.getElementById('overTitle').textContent = title;
+  document.getElementById('overScore').textContent = score;
+  document.getElementById('over').classList.add('show');
+  if (score > best) localStorage.setItem('gtaVibesChaosBest', score);
+}
+function restart() {
+  document.getElementById('over').classList.remove('show');
+  init();
+  renderStars();
+}
+window.restart = restart;
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'r') restart(); });
+
+// star decay
+setInterval(() => {
+  if (!gameOver && stars > 0 && performance.now() - lastHitTime > 8000) {
+    stars = Math.max(0, stars - 0.1);
+    renderStars();
+  }
+}, 1000);
+
+// cop spawn
+setInterval(() => {
+  if (gameOver) return;
+  const target = Math.floor(stars * 1.5);
+  while (cops.length < target) spawnCop();
+}, 1500);
+
+// ============== RENDER ==============
+function draw() {
+  // camera
+  const cx = canvas.width / 2 - player.x;
+  const cy = canvas.height / 2 - player.y;
+
+  // background
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // roads (grid)
+  ctx.fillStyle = '#444';
+  for (let x = 0; x < W; x += TILE) {
+    const sx = x + cx;
+    if (sx > -20 && sx < canvas.width + 20) ctx.fillRect(sx - 12, cy, 24, H);
+  }
+  for (let y = 0; y < H; y += TILE) {
+    const sy = y + cy;
+    if (sy > -20 && sy < canvas.height + 20) ctx.fillRect(cx, sy - 12, W, 24);
+  }
+  // lane dashes
+  ctx.strokeStyle = '#ffd166'; ctx.setLineDash([10, 14]); ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += TILE) {
+    ctx.beginPath();
+    ctx.moveTo(x + cx, cy); ctx.lineTo(x + cx, H + cy); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += TILE) {
+    ctx.beginPath();
+    ctx.moveTo(cx, y + cy); ctx.lineTo(W + cx, y + cy); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // buildings
+  for (const b of buildings) {
+    const sx = b.x + cx, sy = b.y + cy;
+    if (sx + b.w < 0 || sy + b.h < 0 || sx > canvas.width || sy > canvas.height) continue;
+    ctx.fillStyle = b.c;
+    ctx.fillRect(sx, sy, b.w, b.h);
+    ctx.strokeStyle = 'rgba(0,0,0,.4)';
+    ctx.strokeRect(sx, sy, b.w, b.h);
+  }
+
+  // peds
+  for (const p of peds) {
+    if (!p.alive) continue;
+    const sx = p.x + cx, sy = p.y + cy;
+    if (sx < -20 || sy < -20 || sx > canvas.width + 20 || sy > canvas.height + 20) continue;
+    ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2); ctx.fill();
+  }
+
+  // particles
+  for (const p of particles) {
+    ctx.fillStyle = p.c;
+    ctx.globalAlpha = Math.min(1, p.life / 30);
+    ctx.fillRect(p.x + cx - 2, p.y + cy - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  // bullets
+  for (const b of bullets) {
+    ctx.fillStyle = b.fromCop ? '#ffd166' : '#fff';
+    ctx.fillRect(b.x + cx - 2, b.y + cy - 2, 4, 4);
+  }
+
+  // cops
+  for (const c of cops) drawCar(c.x + cx, c.y + cy, c.angle, '#3a7bd5', '#1a4ea0');
+
+  // player
+  drawCar(canvas.width/2, canvas.height/2, player.angle, '#e74c3c', '#922a1f');
+
+  // HP bar
+  ctx.fillStyle = '#000';
+  ctx.fillRect(canvas.width/2 - 30, canvas.height/2 + 22, 60, 6);
+  ctx.fillStyle = player.hp > 30 ? '#4caf50' : '#ff5252';
+  ctx.fillRect(canvas.width/2 - 30, canvas.height/2 + 22, 60 * (player.hp/100), 6);
+
+  // minimap
+  mmCtx.fillStyle = '#1a1a1a';
+  mmCtx.fillRect(0, 0, MM, MM);
+  mmCtx.fillStyle = '#3a3a3a';
+  for (let x = 0; x < W; x += TILE) mmCtx.fillRect(x * MM_SCALE, 0, 1, MM);
+  for (let y = 0; y < H; y += TILE) mmCtx.fillRect(0, y * MM_SCALE, MM, 1);
+  mmCtx.fillStyle = '#3a7bd5';
+  for (const co of cops) mmCtx.fillRect(co.x * MM_SCALE - 2, co.y * MM_SCALE - 2, 4, 4);
+  mmCtx.fillStyle = '#e74c3c';
+  mmCtx.fillRect(player.x * MM_SCALE - 3, player.y * MM_SCALE - 3, 6, 6);
+
+  // HUD updates
+  document.getElementById('copcount').textContent = cops.length;
+  document.getElementById('score').textContent = score;
+  const t = Math.floor((performance.now() - startTime) / 1000);
+  document.getElementById('timer').textContent = `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+}
+
+function drawCar(x, y, angle, c1, c2) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(angle);
+  // body
+  ctx.fillStyle = c1;
+  ctx.fillRect(-14, -8, 28, 16);
+  // top
+  ctx.fillStyle = c2;
+  ctx.fillRect(-6, -7, 12, 14);
+  // headlights
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(12, -7, 3, 4); ctx.fillRect(12, 3, 3, 4);
+  ctx.restore();
+}
+
+// ============== LOOP ==============
+let last = performance.now();
+function loop(t) {
+  const dt = t - last; last = t;
+  if (!gameOver) {
+    updatePlayer(dt);
+    updatePeds();
+    updateCops();
+    updateBullets();
+    updateParticles();
+    // passive score for chaos
+    if (stars > 0) score += stars;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+renderStars();
+</script>
+</body>
+</html>

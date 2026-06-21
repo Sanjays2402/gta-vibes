@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GTA Vibes</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh; background: linear-gradient(180deg, #0c0c1d 0%, #1a1530 100%);
+    color: #eee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: clamp(40px, 8vw, 80px); font-weight: 900;
+    background: linear-gradient(90deg, #ff5252, #ffd166);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: -2px; margin-bottom: 10px;
+  }
+  .sub { color: #888; margin-bottom: 50px; font-size: 16px; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px; width: 100%; max-width: 800px;
+  }
+  .card {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 28px; text-decoration: none; color: inherit;
+    transition: transform .15s, border-color .15s, background .15s;
+  }
+  .card:hover { transform: translateY(-3px); border-color: #ffd166; background: rgba(255,209,102,.05); }
+  .tag { font-size: 11px; color: #ffd166; letter-spacing: 2px; text-transform: uppercase; }
+  .name { font-size: 24px; font-weight: 700; margin: 8px 0 12px; }
+  .desc { color: #aaa; font-size: 14px; line-height: 1.5; }
+  .ctas { margin-top: 50px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .ctas a { color: #888; text-decoration: none; font-size: 13px; padding: 8px 14px; border: 1px solid #333; border-radius: 6px; }
+  .ctas a:hover { color: #ffd166; border-color: #ffd166; }
+</style>
+</head>
+<body>
+  <h1>GTA VIBES</h1>
+  <p class="sub">Two browser games. WASD. No install.</p>
+  <div class="grid">
+    <a class="card" href="chaos/">
+      <div class="tag">GAME A · 2D</div>
+      <div class="name">Chaos</div>
+      <p class="desc">Top-down driving. Cops, wanted stars, ragdoll peds, brick buildings. The OG GTA feel, in canvas.</p>
+    </a>
+    <a class="card" href="drift/">
+      <div class="tag">GAME B · 3D</div>
+      <div class="name">Drift</div>
+      <p class="desc">Three.js open city. Free roam, ramps, day/night cycle, handbrake drifts, chase/hood/top cameras.</p>
+    </a>
+  </div>
+  <div class="ctas">
+    <a href="https://github.com/Sanjays2402/gta-vibes">GitHub repo →</a>
+  </div>
+</body>
+</html>

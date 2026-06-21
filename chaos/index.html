@@ -59,9 +59,10 @@
   <div>Score: <b id="score">0</b></div>
   <div>Time: <b id="timer">0:00</b></div>
   <div>Best: <b id="best">0</b></div>
+  <div>Nitro: <span id="nitrobar" style="display:inline-block;width:80px;height:8px;background:#222;border:1px solid #444;border-radius:3px;vertical-align:middle;overflow:hidden"><span id="nitrofill" style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#00e5ff,#0091ea);transition:width .1s"></span></span></div>
 </div>
 <div id="help">
-  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> brake · <kbd>R</kbd> restart · <kbd>H</kbd> hide stars
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> brake · <kbd>Shift</kbd> nitro · <kbd>R</kbd> restart
 </div>
 <div id="over">
   <h1 id="overTitle">BUSTED</h1>
@@ -91,6 +92,8 @@ addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
 
 let player, cops, peds, bullets, particles, buildings, pickups, score, startTime, gameOver, stars, lastHitTime;
 let shake = 0;
+let nitro = 100; // 0..100 fuel; regenerates when not used
+let nitroActive = false;
 function kick(amount) { shake = Math.min(24, shake + amount); }
 const best = +localStorage.getItem('gtaVibesChaosBest') || 0;
 document.getElementById('best').textContent = best;
@@ -149,13 +152,23 @@ function init() {
   pickups = genPickups(14);
   score = 0; stars = 0; gameOver = false; lastHitTime = 0;
   shake = 0;
+  nitro = 100; nitroActive = false;
   startTime = performance.now();
 }
 init();
 
 // ============== PLAYER UPDATE ==============
 function updatePlayer(dt) {
-  const accel = 0.35, friction = 0.96, turn = 0.055, maxSpeed = 8;
+  // nitro fuel logic
+  const wantNitro = (keys['shift'] || keys['arrowleft'] && false) ? false : !!keys['shift'];
+  nitroActive = wantNitro && nitro > 0 && (keys['w'] || keys['arrowup']);
+  if (nitroActive) {
+    nitro = Math.max(0, nitro - 0.6);
+  } else {
+    nitro = Math.min(100, nitro + 0.18);
+  }
+  const boost = nitroActive ? 1.9 : 1.0;
+  const accel = 0.35 * boost, friction = 0.96, turn = 0.055, maxSpeed = 8 * boost;
   if (keys['w'] || keys['arrowup']) {
     player.vx += Math.cos(player.angle) * accel;
     player.vy += Math.sin(player.angle) * accel;
@@ -168,6 +181,18 @@ function updatePlayer(dt) {
   if (speed > maxSpeed) {
     player.vx = player.vx / speed * maxSpeed;
     player.vy = player.vy / speed * maxSpeed;
+  }
+  // emit nitro flame particles behind car
+  if (nitroActive && Math.random() < 0.9) {
+    const bx = player.x - Math.cos(player.angle) * 16;
+    const by = player.y - Math.sin(player.angle) * 16;
+    particles.push({
+      x: bx + rand(-2,2), y: by + rand(-2,2),
+      vx: -Math.cos(player.angle) * rand(2,5) + rand(-.5,.5),
+      vy: -Math.sin(player.angle) * rand(2,5) + rand(-.5,.5),
+      life: rand(14, 28),
+      c: Math.random() < 0.5 ? '#00e5ff' : '#0091ea'
+    });
   }
   // turning requires some movement (feel)
   const turnMod = Math.min(1, speed / 2);
@@ -488,6 +513,13 @@ function draw() {
   document.getElementById('score').textContent = score;
   const t = Math.floor((performance.now() - startTime) / 1000);
   document.getElementById('timer').textContent = `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+  const nf = document.getElementById('nitrofill');
+  if (nf) {
+    nf.style.width = nitro + '%';
+    nf.style.background = nitroActive
+      ? 'linear-gradient(90deg,#fff,#00e5ff)'
+      : 'linear-gradient(90deg,#00e5ff,#0091ea)';
+  }
 }
 
 function drawCar(x, y, angle, c1, c2) {

@@ -172,6 +172,43 @@ function dropSkid(x, z, yaw) {
   skidIdx = (skidIdx + 1) % MAX_SKIDS;
 }
 
+const smokeGeo = new THREE.PlaneGeometry(1, 1);
+const MAX_SMOKE = 80;
+const smokePool = [];
+let smokeIdx = 0;
+for (let i = 0; i < MAX_SMOKE; i++) {
+  const m = new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0, depthWrite: false });
+  const s = new THREE.Mesh(smokeGeo, m);
+  s.position.y = -100; s.visible = false;
+  s.userData = { life: 0, vx: 0, vy: 0, vz: 0 };
+  scene.add(s); smokePool.push(s);
+}
+function emitSmoke(x, y, z) {
+  const s = smokePool[smokeIdx];
+  s.position.set(x, y, z);
+  s.scale.setScalar(0.8 + Math.random() * 0.6);
+  s.material.opacity = 0.7;
+  s.visible = true;
+  s.userData.life = 1;
+  s.userData.vx = (Math.random() - 0.5) * 1.2;
+  s.userData.vy = 1.2 + Math.random() * 0.8;
+  s.userData.vz = (Math.random() - 0.5) * 1.2;
+  smokeIdx = (smokeIdx + 1) % MAX_SMOKE;
+}
+function updateSmoke(dt) {
+  for (const s of smokePool) {
+    if (!s.visible) continue;
+    s.userData.life -= dt * 0.9;
+    if (s.userData.life <= 0) { s.visible = false; continue; }
+    s.position.x += s.userData.vx * dt;
+    s.position.y += s.userData.vy * dt;
+    s.position.z += s.userData.vz * dt;
+    s.scale.multiplyScalar(1 + dt * 1.4);
+    s.material.opacity = s.userData.life * 0.65;
+    s.lookAt(camera.position);
+  }
+}
+
 const car = new THREE.Group();
 const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c, metalness: 0.5, roughness: 0.4 });
 const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4.2), bodyMat);
@@ -360,9 +397,14 @@ function update(dt) {
   const slipAmt = Math.abs(sideSpeed);
   if (!carState.airborne && spLen > 6 && (handbrake || slipAmt > 4)) {
     const cy = Math.cos(carState.yaw), sy = Math.sin(carState.yaw);
-    dropSkid(car.position.x + (-1.1 * cy + -1.4 * sy), car.position.z + (1.1 * sy + -1.4 * cy), carState.yaw);
-    dropSkid(car.position.x + ( 1.1 * cy + -1.4 * sy), car.position.z + (-1.1 * sy + -1.4 * cy), carState.yaw);
+    const rx1 = -1.1 * cy + -1.4 * sy, rz1 = 1.1 * sy + -1.4 * cy;
+    const rx2 =  1.1 * cy + -1.4 * sy, rz2 = -1.1 * sy + -1.4 * cy;
+    dropSkid(car.position.x + rx1, car.position.z + rz1, carState.yaw);
+    dropSkid(car.position.x + rx2, car.position.z + rz2, carState.yaw);
+    if (Math.random() < 0.55) emitSmoke(car.position.x + rx1, 0.4, car.position.z + rz1);
+    if (Math.random() < 0.55) emitSmoke(car.position.x + rx2, 0.4, car.position.z + rz2);
   }
+  updateSmoke(dt);
 
   if (camMode === 0) {
     const camTarget = new THREE.Vector3(

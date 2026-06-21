@@ -90,6 +90,8 @@ addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
 addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
 
 let player, cops, peds, bullets, particles, buildings, score, startTime, gameOver, stars, lastHitTime;
+let shake = 0;
+function kick(amount) { shake = Math.min(24, shake + amount); }
 const best = +localStorage.getItem('gtaVibesChaosBest') || 0;
 document.getElementById('best').textContent = best;
 
@@ -130,6 +132,7 @@ function init() {
   cops = []; bullets = []; particles = []; peds = genPeds(120);
   buildings = genBuildings();
   score = 0; stars = 0; gameOver = false; lastHitTime = 0;
+  shake = 0;
   startTime = performance.now();
 }
 init();
@@ -177,7 +180,7 @@ function updatePlayer(dt) {
       }
       spawnParticles(player.x, player.y, '#ffd166', 6);
       // small damage on building hit if going fast
-      if (speed > 5) damagePlayer(2);
+      if (speed > 5) { damagePlayer(2); kick(speed * 0.8); }
     }
   }
 }
@@ -256,6 +259,7 @@ function updateBullets() {
     if (b.fromCop && dist2(b, player) < 200) {
       damagePlayer(6);
       spawnParticles(b.x, b.y, '#ffd166', 5);
+      kick(5);
       bullets.splice(i, 1);
     }
   }
@@ -339,8 +343,11 @@ setInterval(() => {
 // ============== RENDER ==============
 function draw() {
   // camera
-  const cx = canvas.width / 2 - player.x;
-  const cy = canvas.height / 2 - player.y;
+  const sx = shake > 0.1 ? (Math.random() - 0.5) * shake : 0;
+  const sy = shake > 0.1 ? (Math.random() - 0.5) * shake : 0;
+  shake *= 0.85;
+  const cx = canvas.width / 2 - player.x + sx;
+  const cy = canvas.height / 2 - player.y + sy;
 
   // background
   ctx.fillStyle = '#2a2a2a';

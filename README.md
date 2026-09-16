@@ -19,6 +19,7 @@ Two browser games inspired by GTA. No install, no build, just open and play.
 - Open-world city, 16x16 block grid, low-poly buildings.
 - Car physics with handbrake-induced sideways slide.
 - 24 launch ramps scattered around — air time tracked.
+- Drift scoring — hold a handbrake slide to rack up drift points; best drift persists in LocalStorage.
 - 4 times-of-day (Noon / Sunset / Night / Sunrise) with headlights at night.
 - 3 cameras: chase / hood / top-down.
 - Controls: WASD/Arrows drive · Space handbrake · C cycle camera · T cycle time · R reset.
@@ -27,7 +28,7 @@ Two browser games inspired by GTA. No install, no build, just open and play.
 - Vanilla JS, zero build tooling.
 - Game A: HTML5 canvas 2D.
 - Game B: Three.js 0.160 via ES module import-map.
-- LocalStorage for high scores / best air-time.
+- LocalStorage for high scores / best air-time / best drift.
 
 ## Why
 A quick browser-game weekend hack.

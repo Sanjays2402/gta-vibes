@@ -33,6 +33,7 @@
   <div>Top speed: <b id="top">0</b> km/h</div>
   <div>Air time: <b id="air">0.0</b> s</div>
   <div>Best air: <b id="bestair">0.0</b> s</div>
+  <div>Drift: <b id="drift">0</b> pts · Best <b id="bestdrift">0</b></div>
 </div>
 <div id="speedo"><span id="kmh">0</span><small>km/h</small></div>
 <div id="nitro"><span>Nitro</span><div class="bar"><div class="fill" id="nitroFill" style="width:100%"></div></div></div>
@@ -262,10 +263,13 @@ const carState = {
   topSpeed: 0,
   nitro: 1,
   nitroActive: false,
+  driftScore: 0,
+  bestDrift: +localStorage.getItem('gtaVibesDriftBest') || 0,
 };
 const nitroEl = document.getElementById('nitro');
 const nitroFill = document.getElementById('nitroFill');
 document.getElementById('bestair').textContent = carState.bestAir.toFixed(1);
+document.getElementById('bestdrift').textContent = Math.floor(carState.bestDrift);
 
 const keys = {};
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
@@ -410,6 +414,13 @@ function update(dt) {
   for (const w of wheels) w.rotation.x -= spLen * dt * 0.5;
 
   const slipAmt = Math.abs(sideSpeed);
+  if (!carState.airborne && spLen > 8 && slipAmt > 3) {
+    carState.driftScore += slipAmt * spLen * dt * 0.5;
+    if (carState.driftScore > carState.bestDrift) {
+      carState.bestDrift = carState.driftScore;
+      localStorage.setItem('gtaVibesDriftBest', String(Math.floor(carState.bestDrift)));
+    }
+  }
   if (!carState.airborne && spLen > 6 && (handbrake || slipAmt > 4)) {
     const cy = Math.cos(carState.yaw), sy = Math.sin(carState.yaw);
     const rx1 = -1.1 * cy + -1.4 * sy, rz1 = 1.1 * sy + -1.4 * cy;
@@ -460,6 +471,7 @@ function update(dt) {
   document.getElementById('dist').textContent = Math.floor(carState.distance);
   document.getElementById('top').textContent = carState.topSpeed;
   document.getElementById('air').textContent = carState.airTime.toFixed(1);
+  document.getElementById('drift').textContent = Math.floor(carState.driftScore);
 }
 
 function loop() {
